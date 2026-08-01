@@ -1,4 +1,6 @@
 // Felder Construction — main.js
+
+// --- Site behaviors (header, nav, gallery filter, reveal, estimate form, year) ---
 (function () {
   "use strict";
 
@@ -107,9 +109,11 @@
   document.getElementById("year").textContent = String(new Date().getFullYear());
 })();
 
-// --- FAQ chatbot (fully client-side, no backend) ---
+// --- AI chatbot (Workers AI backend, rule-based fallback) ---
 (function () {
   "use strict";
+
+  var CHAT_API = "https://felder-chat.michaelschillereff.workers.dev/api/chat";
 
   var launcher = document.getElementById("chatLauncher");
   var panel = document.getElementById("chatPanel");
@@ -119,67 +123,45 @@
   var form = document.getElementById("chatForm");
   var input = document.getElementById("chatText");
 
-  var CONTACT =
+  var history = []; // { role: "user"|"assistant", content: string }
+  var greeted = false;
+
+  // Rule-based fallback, used only if the AI endpoint is unreachable
+  var FALLBACK_CONTACT =
     'You can reach Michael directly at <a href="tel:+18283333369">(828) 333-3369</a> or ' +
     '<a href="mailto:michael@felderconstruction.net">michael@felderconstruction.net</a>.';
-
-  var KB = [
+  var FALLBACK_KB = [
     {
       keys: ["service", "remodel", "kitchen", "bath", "deck", "floor", "tile", "what do you do", "offer"],
-      answer:
-        "We handle kitchen remodels, bathroom remodels, decks and repairs, and flooring " +
-        "(hardwood, tile, LVP, laminate, carpet tile) — residential and commercial. " +
-        "One team covers every trade: tile, plumbing, framing, sheetrock, and electrical."
+      answer: "We handle kitchen remodels, bathroom remodels, decks and repairs, and flooring — residential and commercial. One team covers every trade: tile, plumbing, framing, sheetrock, and electrical."
     },
     {
       keys: ["estimate", "quote", "price", "cost", "pricing", "how much", "free"],
-      answer:
-        'Estimates are free. The quickest way to get one is to call ' +
-        '<a href="tel:+18283333369">(828) 333-3369</a> or send the ' +
-        '<a href="#contact">estimate request form</a> — you\'ll hear back directly from Michael, usually the same day.'
+      answer: 'Estimates are free. Call <a href="tel:+18283333369">(828) 333-3369</a> or send the <a href="#contact">estimate request form</a> — you\'ll hear back directly from Michael, usually the same day.'
     },
     {
-      keys: ["hour", "open", "close", "when", "schedule", "available", "availability", "book"],
-      answer:
-        "We're available Mon–Thu 7:30a–7:30p, Fri 7:30a–6p, and Sat 9a–5p (closed Sundays). " +
-        "For current project availability, call <a href=\"tel:+18283333369\">(828) 333-3369</a>."
+      keys: ["hour", "open", "close", "when", "schedule", "available", "book"],
+      answer: "We're available Mon–Thu 7:30a–7:30p, Fri 7:30a–6p, and Sat 9a–5p (closed Sundays). For scheduling, call <a href=\"tel:+18283333369\">(828) 333-3369</a>."
     },
     {
       keys: ["where", "area", "location", "serve", "city", "arden", "asheville", "hendersonville", "wnc", "address"],
-      answer:
-        "We're based at 15 Morgan Blvd in Arden, NC, and serve Asheville, Hendersonville, " +
-        "and the greater Western North Carolina area."
+      answer: "We're based at 15 Morgan Blvd in Arden, NC, and serve Asheville, Fletcher, Mills River, Hendersonville, and greater Western North Carolina."
     },
     {
       keys: ["review", "rating", "bbb", "reference", "testimonial", "reputation"],
-      answer:
-        'We hold a 5.0-star average across 15 verified reviews and an A+ BBB rating. ' +
-        'You can read client reviews <a href="#reviews">here on the site</a>.'
+      answer: 'We hold a 5.0-star average across 15 verified reviews and an A+ BBB rating. Read client reviews <a href="#reviews">here</a>.'
     },
     {
       keys: ["who", "owner", "michael", "about", "company", "insured", "licensed", "experience", "team"],
-      answer:
-        "Felder Construction is owner-operated and has been remodeling WNC homes since 2015. " +
-        "Michael Felder is on every job, working alongside a small crew of specialists " +
-        "(tile, paint/sheetrock, decks and framing)."
+      answer: "Felder Construction is owner-operated and has been remodeling WNC homes since 2015. Michael Felder is on every job, alongside a small crew of specialists."
     },
     {
-      keys: ["contact", "phone", "email", "call", "talk", "human", "person", "reach"],
-      answer: CONTACT
-    },
-    {
-      keys: ["hi", "hello", "hey", "good morning", "good afternoon"],
-      answer: "Hello! How can I help — services, estimates, hours, or our service area?"
-    },
-    {
-      keys: ["thank", "thanks"],
-      answer: "You're welcome! Anything else I can help with?"
+      keys: ["hi", "hello", "hey", "thank"],
+      answer: "Hello! Ask me anything about our services, estimates, hours, or service area."
     }
   ];
 
   var CHIPS = ["Our services", "Get an estimate", "Hours", "Service area", "Reviews", "Contact"];
-
-  var greeted = false;
 
   function scrollToBottom() {
     messages.scrollTop = messages.scrollHeight;
@@ -198,20 +180,88 @@
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
-  function botReply(text) {
-    var typing = addMsg('<span class="chat-msg typing" style="padding:0;border:0;background:none"><i></i><i></i><i></i></span>', "bot typing");
-    setTimeout(function () {
-      typing.remove();
-      var q = text.toLowerCase();
-      var hit = null;
-      for (var i = 0; i < KB.length; i++) {
-        for (var j = 0; j < KB[i].keys.length; j++) {
-          if (q.indexOf(KB[i].keys[j]) !== -1) { hit = KB[i]; break; }
-        }
-        if (hit) break;
+  function showTyping() {
+    var div = document.createElement("div");
+    div.className = "chat-msg bot typing";
+    div.innerHTML = "<i></i><i></i><i></i>";
+    messages.appendChild(div);
+    scrollToBottom();
+    return div;
+  }
+
+  function fallbackAnswer(text) {
+    var q = text.toLowerCase();
+    for (var i = 0; i < FALLBACK_KB.length; i++) {
+      for (var j = 0; j < FALLBACK_KB[i].keys.length; j++) {
+        if (q.indexOf(FALLBACK_KB[i].keys[j]) !== -1) return FALLBACK_KB[i].answer;
       }
-      addMsg(hit ? hit.answer : "I don't have an answer for that one, but Michael does — " + CONTACT, "bot");
-    }, 550);
+    }
+    return "I'm offline at the moment, but Michael can help — " + FALLBACK_CONTACT;
+  }
+
+  // Parse "LEAD_READY name=.. | contact=.. | project=.. | location=.. | timeline=.. | notes=.."
+  function parseLead(text) {
+    var m = text.match(/LEAD_READY\s+(.+?)(?:\n|$)/);
+    if (!m) return null;
+    var lead = {};
+    m[1].split("|").forEach(function (pair) {
+      var idx = pair.indexOf("=");
+      if (idx > -1) lead[pair.slice(0, idx).trim()] = pair.slice(idx + 1).trim();
+    });
+    var visible = text.replace(/LEAD_READY\s+.+?(\n|$)/, "").trim();
+    return { lead: lead, visible: visible };
+  }
+
+  function renderLeadCard(lead) {
+    var subject = "Website chat lead — " + (lead.project || "project") + " (" + (lead.name || "") + ")";
+    var body =
+      "Name: " + (lead.name || "") + "\n" +
+      "Contact: " + (lead.contact || "") + "\n" +
+      "Project: " + (lead.project || "") + "\n" +
+      "Location: " + (lead.location || "") + "\n" +
+      "Timeline: " + (lead.timeline || "") + "\n" +
+      "Details: " + (lead.notes || "") + "\n\n" +
+      "(Collected by the website chat assistant)";
+    var href = "mailto:michael@felderconstruction.net?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+    var card = document.createElement("div");
+    card.className = "chat-msg bot chat-lead";
+    card.innerHTML =
+      "<strong>Project summary</strong>" +
+      "<span>" + escapeHtml(lead.project || "") + " — " + escapeHtml(lead.location || "") + "</span>" +
+      '<a class="chat-lead-btn" href="' + href + '">Send to Michael</a>';
+    messages.appendChild(card);
+    scrollToBottom();
+  }
+
+  function botReply(text) {
+    var typing = showTyping();
+
+    fetch(CHAT_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: history })
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error("bad status");
+        return res.json();
+      })
+      .then(function (data) {
+        typing.remove();
+        var reply = (data && data.reply) ? String(data.reply) : "";
+        if (!reply) throw new Error("empty reply");
+
+        var parsed = parseLead(reply);
+        var visible = parsed ? parsed.visible : reply;
+        if (visible) {
+          addMsg(escapeHtml(visible).replace(/\n/g, "<br>"), "bot");
+        }
+        history.push({ role: "assistant", content: reply });
+        if (parsed) renderLeadCard(parsed.lead);
+      })
+      .catch(function () {
+        typing.remove();
+        addMsg(fallbackAnswer(text), "bot");
+      });
   }
 
   function renderChips() {
@@ -228,6 +278,7 @@
 
   function send(text) {
     addMsg(escapeHtml(text), "user");
+    history.push({ role: "user", content: text });
     botReply(text);
   }
 
@@ -236,6 +287,10 @@
     launcher.setAttribute("aria-expanded", "true");
     if (!greeted) {
       greeted = true;
+      history.push({
+        role: "user",
+        content: "Hi — a visitor just opened the chat. Greet them briefly as the Felder Construction assistant and ask how you can help."
+      });
       botReply("hi");
       renderChips();
     }
