@@ -124,13 +124,17 @@ export async function availableSlots(env, dateStr, now = new Date()) {
     return { date: dateStr, timezone: TZ, closed: true, slots: [], message: "Closed Sundays" };
   }
 
-  const booked = await listBookedIdsForDate(env, dateStr);
   const minTime = now.getTime() + MIN_NOTICE_MS;
-  const open = slots.filter((s) => {
-    if (booked.has(s.id)) return false;
-    if (new Date(s.startIso).getTime() < minTime) return false;
-    return true;
-  });
+  const future = slots.filter((s) => new Date(s.startIso).getTime() >= minTime);
+
+  // Per-slot GET (not list) — KV list/index can lag; GET sees recent writes on this edge
+  let open = future;
+  if (env.LEADS && future.length) {
+    const flags = await Promise.all(
+      future.map((s) => env.LEADS.get(`book:${s.id}`).then((v) => !!v))
+    );
+    open = future.filter((_, i) => !flags[i]);
+  }
 
   return {
     date: dateStr,
