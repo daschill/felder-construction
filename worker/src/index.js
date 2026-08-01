@@ -2,8 +2,10 @@
 // Answers visitor questions with Workers AI and qualifies project leads.
 // POST /api/chat  { messages: [{ role: "user"|"assistant", content: string }] }
 // -> { reply: string }
+// POST /api/lead  stores a lead in KV
+// GET  /api/leads?key=  lists leads (requires LEADS_KEY secret)
 
-const SYSTEM_PROMPT = `You are Felder, the AI assistant on felderconstruction.net, the website of Felder Construction — an owner-operated remodeling contractor based in Arden, North Carolina, serving Asheville and greater Western North Carolina (WNC). Your job is to answer visitor questions and qualify project leads so the owner, Michael Felder, spends less time on the phone.
+const SYSTEM_PROMPT = `You are Felder, the AI assistant on the Felder Construction website — an owner-operated remodeling contractor based in Arden, North Carolina, serving Asheville and greater Western North Carolina (WNC). Your job is to answer visitor questions and qualify project leads so the owner, Michael Felder, spends less time on the phone.
 
 BUSINESS FACTS
 - Services: kitchen remodels; bathroom remodels (custom tile showers, freestanding tubs, vanities, plumbing rework); decks new and repaired (composite boards, wire railing, structural reinforcement including hot tub support); flooring (hardwood, tile, luxury vinyl plank, laminate, carpet tile); storm and water damage interior repairs; commercial remodeling and flooring.
@@ -28,16 +30,64 @@ LEAD_READY name=<name> | contact=<phone or email> | project=<type> | location=<t
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Max-Age": "86400",
 };
+
+function json(data, status = 200) {
+  return Response.json(data, { status, headers: CORS });
+}
+
+function clean(v, max) {
+  return String(v || "").slice(0, max).trim();
+}
+
+function parseLeadLine(text) {
+  const m = String(text).match(/LEAD_READY\s+(.+?)(?:\n|$)/);
+  if (!m) return null;
+  const lead = {};
+  m[1].split("|").forEach((pair) => {
+    const idx = pair.indexOf("=");
+    if (idx > -1) lead[pair.slice(0, idx).trim()] = pair.slice(idx + 1).trim();
+  });
+  return lead;
+}
+
+async function storeLead(env, body) {
+  const lead = {
+    source: clean(body.source, 20) || "unknown",
+    name: clean(body.name, 100),
+    contact: clean(body.contact, 150),
+    project: clean(body.project, 120),
+    location: clean(body.location, 120),
+    timeline: clean(body.timeline, 120),
+    notes: clean(body.notes, 1000),
+    page: clean(body.page, 200),
+    at: new Date().toISOString(),
+  };
+  if (!lead.name && !lead.contact) {
+    return { error: "name or contact required" };
+  }
+  if (!env.LEADS) {
+    return { error: "leads store not configured" };
+  }
+  const key = "lead:" + Date.now() + ":" + Math.random().toString(36).slice(2, 8);
+  await env.LEADS.put(key, JSON.stringify(lead));
+  return { ok: true, key };
+}
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
     if (request.method === "OPTIONS") {
-      return new Response(null, { headers: CORS });
+      return new Response(null, { status: 204, headers: CORS });
+    }
+
+    // Health check
+    if (url.pathname === "/api/health" && request.method === "GET") {
+      return json({ ok: true, service: "felder-chat" });
     }
 
     if (url.pathname === "/api/chat" && request.method === "POST") {
@@ -50,7 +100,7 @@ export default {
           .map((m) => ({ role: m.role, content: m.content.slice(0, 1000) }));
 
         if (history.length === 0) {
-          return Response.json({ error: "messages required" }, { status: 400, headers: CORS });
+          return json({ error: "messages required" }, 400);
         }
 
         const result = await env.AI.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
@@ -58,54 +108,74 @@ export default {
           max_tokens: 350,
         });
 
-        return Response.json({ reply: result.response }, { headers: CORS });
+        const reply = result.response || "";
+
+        // Server-side lead capture so leads are not lost if the client fails
+        const parsed = parseLeadLine(reply);
+        if (parsed && (parsed.name || parsed.contact)) {
+          try {
+            await storeLead(env, {
+              source: "chat-server",
+              name: parsed.name,
+              contact: parsed.contact,
+              project: parsed.project,
+              location: parsed.location,
+              timeline: parsed.timeline,
+              notes: parsed.notes,
+              page: clean(body.page, 200) || "chat",
+            });
+          } catch (_) {
+            /* never fail the chat reply over lead storage */
+          }
+        }
+
+        return json({ reply });
       } catch (err) {
-        return Response.json({ error: "chat failed" }, { status: 500, headers: CORS });
+        return json({ error: "chat failed" }, 500);
       }
     }
 
-    // Store a lead (from the chat lead card or the estimate form). Fire-and-forget from the client.
+    // Store a lead (from the chat lead card or the estimate form)
     if (url.pathname === "/api/lead" && request.method === "POST") {
       try {
         const body = await request.json();
-        const clean = (v, max) => String(v || "").slice(0, max).trim();
-        const lead = {
-          source: clean(body.source, 20) || "unknown",
-          name: clean(body.name, 100),
-          contact: clean(body.contact, 150),
-          project: clean(body.project, 120),
-          location: clean(body.location, 120),
-          timeline: clean(body.timeline, 120),
-          notes: clean(body.notes, 1000),
-          page: clean(body.page, 200),
-          at: new Date().toISOString(),
-        };
-        if (!lead.name && !lead.contact) {
-          return Response.json({ error: "name or contact required" }, { status: 400, headers: CORS });
+        const result = await storeLead(env, body);
+        if (result.error) {
+          const status = result.error.includes("required") ? 400 : 500;
+          return json(result, status);
         }
-        const key = "lead:" + Date.now() + ":" + Math.random().toString(36).slice(2, 8);
-        await env.LEADS.put(key, JSON.stringify(lead));
-        return Response.json({ ok: true }, { headers: CORS });
+        return json(result);
       } catch (err) {
-        return Response.json({ error: "lead failed" }, { status: 500, headers: CORS });
+        return json({ error: "lead failed" }, 500);
       }
     }
 
     // Read back stored leads. Protected by the LEADS_KEY secret: GET /api/leads?key=...
     if (url.pathname === "/api/leads" && request.method === "GET") {
       if (!env.LEADS_KEY || url.searchParams.get("key") !== env.LEADS_KEY) {
-        return Response.json({ error: "unauthorized" }, { status: 401, headers: CORS });
+        return json({ error: "unauthorized" }, 401);
+      }
+      if (!env.LEADS) {
+        return json({ error: "leads store not configured" }, 500);
       }
       const list = await env.LEADS.list({ prefix: "lead:", limit: 200 });
       const leads = [];
       for (const k of list.keys) {
         const v = await env.LEADS.get(k.name);
-        if (v) leads.push(JSON.parse(v));
+        if (v) {
+          try {
+            leads.push(JSON.parse(v));
+          } catch (_) {
+            /* skip bad records */
+          }
+        }
       }
       leads.sort((a, b) => (a.at < b.at ? 1 : -1));
-      return Response.json({ count: leads.length, leads }, { headers: CORS });
+      return json({ count: leads.length, leads });
     }
 
-    return new Response("felder-chat: POST /api/chat", { headers: CORS });
+    return new Response("felder-chat: POST /api/chat · POST /api/lead · GET /api/health", {
+      headers: CORS,
+    });
   },
 };

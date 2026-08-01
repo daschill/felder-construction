@@ -6,13 +6,13 @@ var LEAD_API = "https://felder-chat.michaelschillereff.workers.dev/api/lead";
 // Fire-and-forget lead capture — never blocks the visitor
 function postLead(payload) {
   try {
-    payload.page = location.pathname;
+    payload.page = location.pathname + location.search;
     fetch(LEAD_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
       keepalive: true
-    }).catch(function () { /* silent — mailto path still works */ });
+    }).catch(function () { /* silent — mailto / call path still works */ });
   } catch (e) { /* silent */ }
 }
 
@@ -22,116 +22,160 @@ function postLead(payload) {
 
   // --- Sticky header shadow ---
   var header = document.querySelector(".site-header");
-  function onScroll() {
-    header.classList.toggle("scrolled", window.scrollY > 10);
+  if (header) {
+    function onScroll() {
+      header.classList.toggle("scrolled", window.scrollY > 10);
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
   }
-  window.addEventListener("scroll", onScroll, { passive: true });
-  onScroll();
 
   // --- Mobile nav ---
   var toggle = document.getElementById("navToggle");
   var nav = document.getElementById("mainNav");
-  toggle.addEventListener("click", function () {
-    var open = nav.classList.toggle("open");
-    toggle.setAttribute("aria-expanded", String(open));
-    toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
-  });
-  nav.addEventListener("click", function (e) {
-    if (e.target.tagName === "A") {
-      nav.classList.remove("open");
-      toggle.setAttribute("aria-expanded", "false");
-    }
-  });
-  document.addEventListener("click", function (e) {
-    if (nav.classList.contains("open") && !nav.contains(e.target) && !toggle.contains(e.target)) {
-      nav.classList.remove("open");
-      toggle.setAttribute("aria-expanded", "false");
-    }
-  });
+  if (toggle && nav) {
+    toggle.addEventListener("click", function () {
+      var open = nav.classList.toggle("open");
+      toggle.setAttribute("aria-expanded", String(open));
+      toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+    });
+    nav.addEventListener("click", function (e) {
+      if (e.target.tagName === "A") {
+        nav.classList.remove("open");
+        toggle.setAttribute("aria-expanded", "false");
+      }
+    });
+    document.addEventListener("click", function (e) {
+      if (nav.classList.contains("open") && !nav.contains(e.target) && !toggle.contains(e.target)) {
+        nav.classList.remove("open");
+        toggle.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
 
   // --- Gallery filter ---
   var filterBtns = document.querySelectorAll(".filter-btn");
   var items = document.querySelectorAll(".gallery-item");
-  filterBtns.forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      filterBtns.forEach(function (b) { b.classList.remove("active"); });
-      btn.classList.add("active");
-      var cat = btn.getAttribute("data-filter");
-      items.forEach(function (item) {
-        var show = cat === "all" || item.getAttribute("data-cat") === cat;
-        item.classList.toggle("hidden", !show);
+  if (filterBtns.length && items.length) {
+    filterBtns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        filterBtns.forEach(function (b) { b.classList.remove("active"); });
+        btn.classList.add("active");
+        var cat = btn.getAttribute("data-filter");
+        items.forEach(function (item) {
+          var show = cat === "all" || item.getAttribute("data-cat") === cat;
+          item.classList.toggle("hidden", !show);
+        });
       });
     });
-  });
+  }
 
   // --- Scroll reveal ---
   var revealEls = document.querySelectorAll(".reveal");
-  if ("IntersectionObserver" in window) {
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        if (entry.isIntersecting) {
-          entry.target.classList.add("visible");
-          io.unobserve(entry.target);
-        }
-      });
-    }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
-    revealEls.forEach(function (el) { io.observe(el); });
-  } else {
-    revealEls.forEach(function (el) { el.classList.add("visible"); });
+  if (revealEls.length) {
+    if ("IntersectionObserver" in window) {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("visible");
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
+      revealEls.forEach(function (el) { io.observe(el); });
+    } else {
+      revealEls.forEach(function (el) { el.classList.add("visible"); });
+    }
   }
 
-  // --- Estimate form -> lead log + mailto ---
+  // --- Estimate form -> lead log (primary) + optional mailto ---
   var form = document.getElementById("estimateForm");
   var note = document.getElementById("formNote");
-  form.addEventListener("submit", function (e) {
-    e.preventDefault();
-    note.className = "form-note";
+  if (form && note) {
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      note.className = "form-note";
 
-    var name = form.name.value.trim();
-    var phone = form.phone.value.trim();
-    var email = form.email.value.trim();
-    var type = form.type.value;
-    var message = form.message.value.trim();
+      var name = (form.name && form.name.value || "").trim();
+      var phone = (form.phone && form.phone.value || "").trim();
+      var email = (form.email && form.email.value || "").trim();
+      var type = form.type ? form.type.value : "";
+      var message = (form.message && form.message.value || "").trim();
 
-    if (!name || !email || !message) {
-      note.textContent = "Please fill in your name, email, and a few words about the project.";
-      note.classList.add("err");
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      note.textContent = "That email address doesn't look right — mind checking it?";
-      note.classList.add("err");
-      return;
-    }
+      if (!name || !email || !message) {
+        note.textContent = "Please fill in your name, email, and a few words about the project.";
+        note.classList.add("err");
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        note.textContent = "That email address doesn't look right — mind checking it?";
+        note.classList.add("err");
+        return;
+      }
 
-    // Save the lead even if the visitor never sends the email
-    postLead({
-      source: "estimate-form",
-      name: name,
-      contact: email + (phone ? " / " + phone : ""),
-      project: type,
-      notes: message
+      var submitBtn = form.querySelector('button[type="submit"]');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Sending…";
+      }
+
+      var payload = {
+        source: "estimate-form",
+        name: name,
+        contact: email + (phone ? " / " + phone : ""),
+        project: type,
+        notes: message
+      };
+
+      // Prefer durable lead log; still offer mailto as backup
+      var subject = "Estimate request — " + type + " (" + name + ")";
+      var body =
+        "Name: " + name + "\n" +
+        "Phone: " + (phone || "—") + "\n" +
+        "Email: " + email + "\n" +
+        "Project type: " + type + "\n\n" +
+        message;
+      var mailto =
+        "mailto:michael@felderconstruction.net" +
+        "?subject=" + encodeURIComponent(subject) +
+        "&body=" + encodeURIComponent(body);
+
+      fetch(LEAD_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(Object.assign({ page: location.pathname }, payload)),
+        keepalive: true
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error("lead failed");
+          note.innerHTML =
+            "Thanks, " + name.split(" ")[0] + "! Your request was received. " +
+            'Michael will follow up soon — or call <a href="tel:+18283333369">(828) 333-3369</a> anytime. ' +
+            '<a href="' + mailto + '">Open email app instead</a>.';
+          note.classList.add("ok");
+          form.reset();
+        })
+        .catch(function () {
+          // Fallback: open email client so the lead is not lost
+          window.location.href = mailto;
+          note.innerHTML =
+            "Opening your email app. If nothing happens, email " +
+            '<a href="mailto:michael@felderconstruction.net">michael@felderconstruction.net</a> ' +
+            'or call <a href="tel:+18283333369">(828) 333-3369</a>.';
+          note.classList.add("ok");
+        })
+        .finally(function () {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Send Request";
+          }
+        });
     });
-
-    var subject = "Estimate request — " + type + " (" + name + ")";
-    var body =
-      "Name: " + name + "\n" +
-      "Phone: " + (phone || "—") + "\n" +
-      "Email: " + email + "\n" +
-      "Project type: " + type + "\n\n" +
-      message;
-
-    window.location.href =
-      "mailto:michael@felderconstruction.net" +
-      "?subject=" + encodeURIComponent(subject) +
-      "&body=" + encodeURIComponent(body);
-
-    note.textContent = "Opening your email app — if nothing happens, email michael@felderconstruction.net or call (828) 333-3369.";
-    note.classList.add("ok");
-  });
+  }
 
   // --- Footer year ---
-  document.getElementById("year").textContent = String(new Date().getFullYear());
+  var yearEl = document.getElementById("year");
+  if (yearEl) yearEl.textContent = String(new Date().getFullYear());
 })();
 
 // --- AI chatbot (Workers AI backend, rule-based fallback) ---
@@ -145,6 +189,10 @@ function postLead(payload) {
   var chips = document.getElementById("chatChips");
   var form = document.getElementById("chatForm");
   var input = document.getElementById("chatText");
+  var widget = document.getElementById("chatWidget");
+
+  // Pages without the chat markup (should not happen after full deploy)
+  if (!launcher || !panel || !closeBtn || !messages || !chips || !form || !input || !widget) return;
 
   var history = []; // { role: "user"|"assistant", content: string }
   var greeted = false;
@@ -160,7 +208,7 @@ function postLead(payload) {
     },
     {
       keys: ["estimate", "quote", "price", "cost", "pricing", "how much", "free"],
-      answer: 'Estimates are free. Call <a href="tel:+18283333369">(828) 333-3369</a> or send the <a href="#contact">estimate request form</a> — you\'ll hear back directly from Michael, usually the same day.'
+      answer: 'Estimates are free. Call <a href="tel:+18283333369">(828) 333-3369</a> or send the <a href="/#contact">estimate request form</a> — you\'ll hear back directly from Michael, usually the same day.'
     },
     {
       keys: ["hour", "open", "close", "when", "schedule", "available", "book"],
@@ -172,7 +220,7 @@ function postLead(payload) {
     },
     {
       keys: ["review", "rating", "bbb", "reference", "testimonial", "reputation"],
-      answer: 'We hold a 5.0-star average across 15 verified reviews and an A+ BBB rating. Read client reviews <a href="#reviews">here</a>.'
+      answer: 'We hold a 5.0-star average across 15 verified reviews and an A+ BBB rating. Read client reviews <a href="/#reviews">here</a>.'
     },
     {
       keys: ["who", "owner", "michael", "about", "company", "insured", "licensed", "experience", "team"],
@@ -200,7 +248,7 @@ function postLead(payload) {
   }
 
   function escapeHtml(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   function showTyping() {
@@ -224,14 +272,14 @@ function postLead(payload) {
 
   // Parse "LEAD_READY name=.. | contact=.. | project=.. | location=.. | timeline=.. | notes=.."
   function parseLead(text) {
-    var m = text.match(/LEAD_READY\s+(.+?)(?:\n|$)/);
+    var m = String(text).match(/LEAD_READY\s+(.+?)(?:\n|$)/);
     if (!m) return null;
     var lead = {};
     m[1].split("|").forEach(function (pair) {
       var idx = pair.indexOf("=");
       if (idx > -1) lead[pair.slice(0, idx).trim()] = pair.slice(idx + 1).trim();
     });
-    var visible = text.replace(/LEAD_READY\s+.+?(\n|$)/, "").trim();
+    var visible = String(text).replace(/LEAD_READY\s+.+?(\n|$)/, "").trim();
     return { lead: lead, visible: visible };
   }
 
@@ -262,7 +310,8 @@ function postLead(payload) {
     card.innerHTML =
       "<strong>Project summary</strong>" +
       "<span>" + escapeHtml(lead.project || "") + " — " + escapeHtml(lead.location || "") + "</span>" +
-      '<a class="chat-lead-btn" href="' + href + '">Send to Michael</a>';
+      "<p class=\"chat-lead-saved\">Saved for Michael. You can also email him:</p>" +
+      '<a class="chat-lead-btn" href="' + href + '">Send summary by email</a>';
     messages.appendChild(card);
     scrollToBottom();
   }
@@ -378,7 +427,7 @@ function postLead(payload) {
     nudgeEl.className = "chat-nudge";
     nudgeEl.innerHTML = "<strong>Questions about your project?</strong><br>Ask me — I answer instantly.";
     nudgeEl.addEventListener("click", openChat);
-    document.getElementById("chatWidget").appendChild(nudgeEl);
+    widget.appendChild(nudgeEl);
     setTimeout(hideNudge, 14000);
   }
   setTimeout(showNudge, 15000);
@@ -396,11 +445,11 @@ function postLead(payload) {
       var isOpen = btn.getAttribute("aria-expanded") === "true";
       questions.forEach(function (other) {
         other.setAttribute("aria-expanded", "false");
-        other.nextElementSibling.hidden = true;
+        if (other.nextElementSibling) other.nextElementSibling.hidden = true;
       });
       if (!isOpen) {
         btn.setAttribute("aria-expanded", "true");
-        btn.nextElementSibling.hidden = false;
+        if (btn.nextElementSibling) btn.nextElementSibling.hidden = false;
       }
     });
   });
