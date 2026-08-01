@@ -314,8 +314,9 @@ function postLead(payload) {
     card.innerHTML =
       "<strong>Project summary</strong>" +
       "<span>" + escapeHtml(lead.project || "") + " — " + escapeHtml(lead.location || "") + "</span>" +
-      "<p class=\"chat-lead-saved\">Saved for Michael. You can also email him:</p>" +
-      '<a class="chat-lead-btn" href="' + href + '">Send summary by email</a>';
+      "<p class=\"chat-lead-saved\">Saved for Michael. Prefer a phone consult?</p>" +
+      '<a class="chat-lead-btn" href="#schedule">Book a call online</a>' +
+      '<a class="chat-lead-btn chat-lead-btn-secondary" href="' + href + '">Email summary</a>';
     messages.appendChild(card);
     scrollToBottom();
   }

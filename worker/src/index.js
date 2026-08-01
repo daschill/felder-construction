@@ -1,14 +1,17 @@
-// Felder Construction — AI chat + phone scheduling worker
-// POST /api/chat  ·  POST /api/lead  ·  GET /api/leads
-// GET  /api/schedule/days  ·  GET /api/schedule/slots  ·  POST /api/schedule/book
+// Felder Construction — AI chat + scheduling + admin + notifications
 
 import {
   availableSlots,
   availabilitySummary,
   bookSlot,
   listBookings,
+  listBlocks,
+  setBlock,
+  clearBlock,
+  cancelBooking,
   SCHEDULE_META,
 } from "./schedule.js";
+import { notify } from "./notify.js";
 
 const SYSTEM_PROMPT = `You are Felder, the AI assistant on the Felder Construction website — an owner-operated remodeling contractor based in Arden, North Carolina, serving Asheville and greater Western North Carolina (WNC). Your job is to answer visitor questions and qualify project leads so the owner, Michael Felder, spends less time on the phone.
 
@@ -22,23 +25,24 @@ BUSINESS FACTS
 - Service area: Arden, Asheville, Fletcher, Mills River, Hendersonville, and greater WNC.
 - Process: free in-home walk-through, then a detailed written estimate and realistic schedule, then the build (arrive on time, communicate throughout, clean jobsite daily), then a final walkthrough.
 - After Hurricane Helene, the company helped WNC homeowners repair storm-damaged floors and interiors.
-- Phone call scheduling: visitors can book a free 30-minute phone consult on the website (section #schedule). Hours for calls: Mon–Thu 8am–7pm, Fri 8am–5:30pm, Sat 9am–4:30pm Eastern, closed Sunday. Tell them to use the online calendar at the Schedule a Call section, or open /#schedule.
+- Phone call scheduling: visitors can book a free 30-minute phone consult on the website (section #schedule). Hours for calls: Mon–Thu 8am–7pm, Fri 8am–5:30pm, Sat 9am–4:30pm Eastern, closed Sunday. Tell them to use the online calendar — open /#schedule or the Book a call tab.
+- Project galleries: kitchen, bathroom, and deck case studies on the site. Local pages for Asheville, Fletcher, and Hendersonville.
 
 RULES
 - Be warm, plain-spoken, and concise: 1-3 short sentences per reply. Plain text only, no markdown or bullet lists unless the visitor asks for a list.
 - Never quote prices or guess what a project might cost. Pricing depends on scope and estimates are always free — say that instead.
 - For urgent problems (active leak, storm damage), tell them to call (828) 333-3369 right away.
 - Only discuss Felder Construction, its services, and home remodeling in general. Politely decline anything unrelated.
-- If they want to schedule a call, point them to the website calendar (#schedule) rather than inventing available times yourself.
+- If they want to schedule a call, point them to the website calendar (#schedule) rather than inventing available times yourself. After collecting a lead, you may invite them to book a call at #schedule.
 - LEAD QUALIFICATION: when a visitor mentions a project they want done, gather details ONE question at a time, in this order: (1) what type of project, (2) what town they are in, (3) when they want it done, (4) their name, (5) their phone number or email. Weave the questions in naturally, one per reply, never all at once.
-- When you have ALL of: name, contact (phone or email), project type, location, and timeline — output one line in EXACTLY this format, followed by one friendly closing sentence telling them Michael will be in touch:
+- When you have ALL of: name, contact (phone or email), project type, location, and timeline — output one line in EXACTLY this format, followed by one friendly closing sentence telling them Michael will be in touch and they can also book a call at the Schedule section:
 LEAD_READY name=<name> | contact=<phone or email> | project=<type> | location=<town> | timeline=<timeline> | notes=<one-line summary of the project>
 - If the visitor only has questions, answer them without pushing the lead flow.`;
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
   "Access-Control-Max-Age": "86400",
 };
 
@@ -48,6 +52,16 @@ function json(data, status = 200) {
 
 function clean(v, max) {
   return String(v || "").slice(0, max).trim();
+}
+
+function authOk(env, request, url) {
+  const key = env.LEADS_KEY;
+  if (!key) return false;
+  const q = url.searchParams.get("key");
+  if (q && q === key) return true;
+  const h = request.headers.get("Authorization") || "";
+  if (h === "Bearer " + key) return true;
+  return false;
 }
 
 function parseLeadLine(text) {
@@ -81,7 +95,33 @@ async function storeLead(env, body) {
   }
   const key = "lead:" + Date.now() + ":" + Math.random().toString(36).slice(2, 8);
   await env.LEADS.put(key, JSON.stringify(lead));
+  // Notify Michael (non-blocking for response path — still awaited so it runs)
+  try {
+    await notify(env, { ...lead, kind: "lead" });
+  } catch (_) {}
   return { ok: true, key };
+}
+
+async function trackHit(env, request, url) {
+  if (!env.LEADS) return;
+  const path = clean(url.searchParams.get("p") || url.searchParams.get("path") || "/", 200);
+  const ref = clean(url.searchParams.get("r") || request.headers.get("Referer") || "", 300);
+  const day = new Date().toISOString().slice(0, 10);
+  const key = `hit:${day}:${Math.random().toString(36).slice(2, 8)}`;
+  await env.LEADS.put(
+    key,
+    JSON.stringify({
+      path,
+      ref,
+      ua: clean(request.headers.get("User-Agent"), 200),
+      at: new Date().toISOString(),
+    }),
+    { expirationTtl: 60 * 60 * 24 * 60 }
+  );
+  // daily counter
+  const ckey = `hits:${day}`;
+  const cur = parseInt((await env.LEADS.get(ckey)) || "0", 10) || 0;
+  await env.LEADS.put(ckey, String(cur + 1), { expirationTtl: 60 * 60 * 24 * 90 });
 }
 
 export default {
@@ -92,9 +132,16 @@ export default {
       return new Response(null, { status: 204, headers: CORS });
     }
 
-    // Health check
     if (url.pathname === "/api/health" && request.method === "GET") {
       return json({ ok: true, service: "felder-chat" });
+    }
+
+    // Lightweight pageview beacon
+    if (url.pathname === "/api/hit" && (request.method === "GET" || request.method === "POST")) {
+      try {
+        await trackHit(env, request, url);
+      } catch (_) {}
+      return new Response(null, { status: 204, headers: CORS });
     }
 
     if (url.pathname === "/api/chat" && request.method === "POST") {
@@ -116,8 +163,6 @@ export default {
         });
 
         const reply = result.response || "";
-
-        // Server-side lead capture so leads are not lost if the client fails
         const parsed = parseLeadLine(reply);
         if (parsed && (parsed.name || parsed.contact)) {
           try {
@@ -131,9 +176,7 @@ export default {
               notes: parsed.notes,
               page: clean(body.page, 200) || "chat",
             });
-          } catch (_) {
-            /* never fail the chat reply over lead storage */
-          }
+          } catch (_) {}
         }
 
         return json({ reply });
@@ -142,7 +185,6 @@ export default {
       }
     }
 
-    // Store a lead (from the chat lead card or the estimate form)
     if (url.pathname === "/api/lead" && request.method === "POST") {
       try {
         const body = await request.json();
@@ -157,40 +199,31 @@ export default {
       }
     }
 
-    // Read back stored leads. Protected by the LEADS_KEY secret: GET /api/leads?key=...
     if (url.pathname === "/api/leads" && request.method === "GET") {
-      if (!env.LEADS_KEY || url.searchParams.get("key") !== env.LEADS_KEY) {
-        return json({ error: "unauthorized" }, 401);
-      }
-      if (!env.LEADS) {
-        return json({ error: "leads store not configured" }, 500);
-      }
+      if (!authOk(env, request, url)) return json({ error: "unauthorized" }, 401);
+      if (!env.LEADS) return json({ error: "leads store not configured" }, 500);
       const list = await env.LEADS.list({ prefix: "lead:", limit: 200 });
       const leads = [];
       for (const k of list.keys) {
         const v = await env.LEADS.get(k.name);
         if (v) {
           try {
-            leads.push(JSON.parse(v));
-          } catch (_) {
-            /* skip bad records */
-          }
+            leads.push({ id: k.name, ...JSON.parse(v) });
+          } catch (_) {}
         }
       }
       leads.sort((a, b) => (a.at < b.at ? 1 : -1));
       return json({ count: leads.length, leads });
     }
 
-    // --- Scheduling: phone consult calendar ---
+    // --- Scheduling ---
     if (url.pathname === "/api/schedule/meta" && request.method === "GET") {
       return json(SCHEDULE_META);
     }
 
     if (url.pathname === "/api/schedule/days" && request.method === "GET") {
       try {
-        const days = url.searchParams.get("days") || "21";
-        const summary = await availabilitySummary(env, days);
-        return json(summary);
+        return json(await availabilitySummary(env, url.searchParams.get("days") || "21"));
       } catch (err) {
         return json({ error: "availability failed" }, 500);
       }
@@ -213,6 +246,23 @@ export default {
         const body = await request.json();
         const result = await bookSlot(env, body);
         if (result.error) return json(result, result.status || 400);
+        if (result.ok && result.booking) {
+          try {
+            await notify(env, {
+              kind: "booking",
+              source: "phone-schedule",
+              name: result.booking.name,
+              contact: [result.booking.phone, result.booking.email].filter(Boolean).join(" / "),
+              phone: result.booking.phone,
+              email: result.booking.email,
+              project: body.project || "Phone consultation",
+              notes: body.notes || "",
+              timeline: `${result.booking.date} ${result.booking.time} ET`,
+              slotLabel: `${result.booking.date} ${result.booking.time} ET`,
+              page: "/#schedule",
+            });
+          } catch (_) {}
+        }
         return json(result);
       } catch (err) {
         return json({ error: "booking failed" }, 500);
@@ -220,9 +270,7 @@ export default {
     }
 
     if (url.pathname === "/api/schedule/bookings" && request.method === "GET") {
-      if (!env.LEADS_KEY || url.searchParams.get("key") !== env.LEADS_KEY) {
-        return json({ error: "unauthorized" }, 401);
-      }
+      if (!authOk(env, request, url)) return json({ error: "unauthorized" }, 401);
       try {
         return json(await listBookings(env));
       } catch (err) {
@@ -230,8 +278,78 @@ export default {
       }
     }
 
+    if (url.pathname === "/api/schedule/cancel" && request.method === "POST") {
+      if (!authOk(env, request, url)) return json({ error: "unauthorized" }, 401);
+      try {
+        const body = await request.json();
+        return json(await cancelBooking(env, body.slotId));
+      } catch (err) {
+        return json({ error: "cancel failed" }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/schedule/blocks" && request.method === "GET") {
+      if (!authOk(env, request, url)) return json({ error: "unauthorized" }, 401);
+      return json(await listBlocks(env));
+    }
+
+    if (url.pathname === "/api/schedule/block" && request.method === "POST") {
+      if (!authOk(env, request, url)) return json({ error: "unauthorized" }, 401);
+      try {
+        const body = await request.json();
+        const result = await setBlock(env, body.date, body.reason);
+        if (result.error) return json(result, result.status || 400);
+        return json(result);
+      } catch (err) {
+        return json({ error: "block failed" }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/schedule/block" && request.method === "DELETE") {
+      if (!authOk(env, request, url)) return json({ error: "unauthorized" }, 401);
+      try {
+        const date = url.searchParams.get("date") || "";
+        return json(await clearBlock(env, date));
+      } catch (err) {
+        return json({ error: "unblock failed" }, 500);
+      }
+    }
+
+    // Admin dashboard summary
+    if (url.pathname === "/api/admin/summary" && request.method === "GET") {
+      if (!authOk(env, request, url)) return json({ error: "unauthorized" }, 401);
+      try {
+        const [bookings, blocks] = await Promise.all([listBookings(env), listBlocks(env)]);
+        const leadList = await env.LEADS.list({ prefix: "lead:", limit: 200 });
+        const leads = [];
+        for (const k of leadList.keys) {
+          const v = await env.LEADS.get(k.name);
+          if (v) {
+            try {
+              leads.push({ id: k.name, ...JSON.parse(v) });
+            } catch (_) {}
+          }
+        }
+        leads.sort((a, b) => (a.at < b.at ? 1 : -1));
+        const today = new Date().toISOString().slice(0, 10);
+        const hitsToday = parseInt((await env.LEADS.get("hits:" + today)) || "0", 10) || 0;
+        const upcoming = bookings.bookings.filter((b) => b.startIso && b.startIso >= new Date().toISOString());
+        return json({
+          hitsToday,
+          leadCount: leads.length,
+          bookingCount: bookings.count,
+          upcomingCount: upcoming.length,
+          leads: leads.slice(0, 50),
+          upcoming: upcoming.slice(0, 30),
+          blocks: blocks.blocks,
+        });
+      } catch (err) {
+        return json({ error: "summary failed" }, 500);
+      }
+    }
+
     return new Response(
-      "felder-chat: /api/chat · /api/lead · /api/schedule/days · /api/schedule/slots · /api/schedule/book · /api/health",
+      "felder-chat: chat · lead · schedule · admin · hit · health",
       { headers: CORS }
     );
   },

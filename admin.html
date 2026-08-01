@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Felder Admin — Leads &amp; Schedule</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --ink:#17191d; --paper:#f7f5f1; --accent:#c07a3e; --muted:#5c6270; --line:#e4e0d9; --ok:#2e7d32; --err:#b3261e; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Barlow, system-ui, sans-serif; background: var(--paper); color: var(--ink); line-height: 1.5; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+    h1,h2 { font-family: "Barlow Condensed", sans-serif; text-transform: uppercase; letter-spacing: .04em; }
+    h1 { font-size: 1.75rem; margin-bottom: .25rem; }
+    .sub { color: var(--muted); margin-bottom: 1.25rem; }
+    .card { background: #fff; border-radius: 10px; padding: 1.25rem; box-shadow: 0 8px 24px rgba(0,0,0,.06); margin-bottom: 1.25rem; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit,minmax(140px,1fr)); gap: .75rem; }
+    .stat { background: var(--paper); border-radius: 8px; padding: 1rem; text-align: center; }
+    .stat b { display: block; font-size: 1.75rem; font-family: "Barlow Condensed", sans-serif; color: var(--accent); }
+    .stat span { font-size: .85rem; color: var(--muted); }
+    label { font-weight: 600; font-size: .9rem; display: block; margin-bottom: .35rem; }
+    input, textarea, button, select {
+      font: inherit; padding: .65rem .75rem; border: 1.5px solid var(--line); border-radius: 6px; width: 100%;
+    }
+    button, .btn {
+      background: var(--accent); color: #fff; border: none; font-weight: 600; cursor: pointer;
+      width: auto; padding: .65rem 1.1rem;
+    }
+    button.secondary { background: var(--ink); }
+    button.ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+    button.danger { background: var(--err); }
+    .row { display: flex; flex-wrap: wrap; gap: .75rem; align-items: end; }
+    .row > * { flex: 1; min-width: 140px; }
+    .row button { flex: 0 0 auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+    th, td { text-align: left; padding: .55rem .4rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; }
+    .tag { display: inline-block; font-size: .72rem; font-weight: 600; padding: .15rem .45rem; border-radius: 999px; background: #efe9e0; color: var(--ink); }
+    .tag.booking { background: rgba(192,122,62,.2); color: #8a5528; }
+    .muted { color: var(--muted); }
+    .err { color: var(--err); }
+    .ok { color: var(--ok); }
+    #loginBox, #app { display: none; }
+    #loginBox.show, #app.show { display: block; }
+    .tabs { display: flex; gap: .35rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .tabs button { background: #fff; color: var(--ink); border: 1.5px solid var(--line); }
+    .tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Felder Admin</h1>
+    <p class="sub">Leads, phone bookings, day blocks, traffic</p>
+
+    <div class="card" id="loginBox">
+      <label for="key">Admin key (LEADS_KEY secret)</label>
+      <div class="row">
+        <div><input id="key" type="password" autocomplete="current-password" placeholder="Paste LEADS_KEY"></div>
+        <button type="button" id="loginBtn">Unlock</button>
+      </div>
+      <p class="muted" style="margin-top:.75rem;font-size:.9rem">Key is stored only in this browser (session). Set with: <code>cd worker &amp;&amp; npx wrangler secret put LEADS_KEY</code></p>
+      <p id="loginErr" class="err" style="margin-top:.5rem"></p>
+    </div>
+
+    <div id="app">
+      <div class="card stats" id="stats"></div>
+      <div class="tabs">
+        <button type="button" class="active" data-panel="leads">Leads</button>
+        <button type="button" data-panel="bookings">Upcoming calls</button>
+        <button type="button" data-panel="blocks">Block days</button>
+        <button type="button" id="refreshBtn" class="secondary">Refresh</button>
+        <button type="button" id="logoutBtn" class="ghost">Log out</button>
+      </div>
+
+      <div class="card panel active" id="panel-leads">
+        <h2>Recent leads</h2>
+        <div id="leadsTable" class="muted" style="margin-top:1rem">Loading…</div>
+      </div>
+
+      <div class="card panel" id="panel-bookings">
+        <h2>Upcoming phone calls</h2>
+        <div id="bookingsTable" class="muted" style="margin-top:1rem">Loading…</div>
+      </div>
+
+      <div class="card panel" id="panel-blocks">
+        <h2>Block days off</h2>
+        <p class="muted" style="margin-bottom:1rem">Blocked days show as unavailable on the public calendar.</p>
+        <div class="row">
+          <div>
+            <label for="blockDate">Date</label>
+            <input type="date" id="blockDate">
+          </div>
+          <div>
+            <label for="blockReason">Reason (optional)</label>
+            <input type="text" id="blockReason" placeholder="Vacation, storm, full…">
+          </div>
+          <button type="button" id="blockBtn">Block day</button>
+        </div>
+        <div id="blocksTable" style="margin-top:1.25rem"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    var API = "https://felder-chat.michaelschillereff.workers.dev";
+    var key = sessionStorage.getItem("fc-admin-key") || "";
+
+    var loginBox = document.getElementById("loginBox");
+    var app = document.getElementById("app");
+    var loginErr = document.getElementById("loginErr");
+
+    function authHeaders() {
+      return { Authorization: "Bearer " + key };
+    }
+    function withKey(path) {
+      var u = API + path;
+      return u + (u.indexOf("?") >= 0 ? "&" : "?") + "key=" + encodeURIComponent(key);
+    }
+
+    function showApp(ok) {
+      loginBox.classList.toggle("show", !ok);
+      app.classList.toggle("show", ok);
+    }
+
+    function load() {
+      return fetch(withKey("/api/admin/summary"), { headers: authHeaders() })
+        .then(function (r) {
+          if (r.status === 401) throw new Error("unauthorized");
+          return r.json();
+        })
+        .then(function (data) {
+          showApp(true);
+          renderStats(data);
+          renderLeads(data.leads || []);
+          renderBookings(data.upcoming || []);
+          renderBlocks(data.blocks || []);
+        })
+        .catch(function (e) {
+          showApp(false);
+          if (e.message === "unauthorized") loginErr.textContent = "Wrong key or LEADS_KEY not set on the worker.";
+          else loginErr.textContent = "Could not load admin data.";
+        });
+    }
+
+    function renderStats(d) {
+      document.getElementById("stats").innerHTML =
+        '<div class="stat"><b>' + (d.hitsToday || 0) + '</b><span>Page views today</span></div>' +
+        '<div class="stat"><b>' + (d.leadCount || 0) + '</b><span>Leads stored</span></div>' +
+        '<div class="stat"><b>' + (d.upcomingCount || 0) + '</b><span>Upcoming calls</span></div>' +
+        '<div class="stat"><b>' + ((d.blocks && d.blocks.length) || 0) + '</b><span>Blocked days</span></div>';
+    }
+
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function renderLeads(leads) {
+      var el = document.getElementById("leadsTable");
+      if (!leads.length) { el.innerHTML = "<p>No leads yet.</p>"; return; }
+      var rows = leads.map(function (L) {
+        return "<tr>" +
+          "<td>" + esc((L.at || "").replace("T", " ").slice(0, 16)) + "</td>" +
+          "<td><span class='tag'>" + esc(L.source) + "</span></td>" +
+          "<td><strong>" + esc(L.name) + "</strong><br><span class='muted'>" + esc(L.contact) + "</span></td>" +
+          "<td>" + esc(L.project) + (L.location ? "<br><span class='muted'>" + esc(L.location) + "</span>" : "") + "</td>" +
+          "<td>" + esc(L.timeline) + (L.notes ? "<br><span class='muted'>" + esc(L.notes).slice(0, 120) + "</span>" : "") + "</td>" +
+          "</tr>";
+      }).join("");
+      el.innerHTML = "<table><thead><tr><th>When</th><th>Source</th><th>Customer</th><th>Project</th><th>Notes</th></tr></thead><tbody>" + rows + "</tbody></table>";
+    }
+
+    function renderBookings(list) {
+      var el = document.getElementById("bookingsTable");
+      if (!list.length) { el.innerHTML = "<p>No upcoming calls.</p>"; return; }
+      var rows = list.map(function (B) {
+        return "<tr>" +
+          "<td><strong>" + esc(B.date) + " " + esc(B.label || B.time) + " ET</strong></td>" +
+          "<td>" + esc(B.name) + "<br><span class='muted'>" + esc(B.phone) + " " + esc(B.email) + "</span></td>" +
+          "<td>" + esc(B.project) + "<br><span class='muted'>" + esc(B.notes) + "</span></td>" +
+          "<td><button type='button' class='danger' data-cancel='" + esc(B.slotId) + "'>Cancel</button></td>" +
+          "</tr>";
+      }).join("");
+      el.innerHTML = "<table><thead><tr><th>Slot</th><th>Customer</th><th>About</th><th></th></tr></thead><tbody>" + rows + "</tbody></table>";
+      el.querySelectorAll("[data-cancel]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          if (!confirm("Cancel this call slot?")) return;
+          fetch(withKey("/api/schedule/cancel"), {
+            method: "POST",
+            headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+            body: JSON.stringify({ slotId: btn.getAttribute("data-cancel") })
+          }).then(load);
+        });
+      });
+    }
+
+    function renderBlocks(blocks) {
+      var el = document.getElementById("blocksTable");
+      if (!blocks.length) { el.innerHTML = "<p class='muted'>No blocked days.</p>"; return; }
+      el.innerHTML = "<table><thead><tr><th>Date</th><th>Reason</th><th></th></tr></thead><tbody>" +
+        blocks.map(function (b) {
+          return "<tr><td>" + esc(b.date) + "</td><td>" + esc(b.reason) + "</td>" +
+            "<td><button type='button' class='ghost' data-unblock='" + esc(b.date) + "'>Unblock</button></td></tr>";
+        }).join("") + "</tbody></table>";
+      el.querySelectorAll("[data-unblock]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          fetch(withKey("/api/schedule/block?date=" + encodeURIComponent(btn.getAttribute("data-unblock"))), {
+            method: "DELETE",
+            headers: authHeaders()
+          }).then(load);
+        });
+      });
+    }
+
+    document.getElementById("loginBtn").addEventListener("click", function () {
+      key = document.getElementById("key").value.trim();
+      sessionStorage.setItem("fc-admin-key", key);
+      loginErr.textContent = "";
+      load();
+    });
+    document.getElementById("logoutBtn").addEventListener("click", function () {
+      sessionStorage.removeItem("fc-admin-key");
+      key = "";
+      showApp(false);
+    });
+    document.getElementById("refreshBtn").addEventListener("click", load);
+    document.getElementById("blockBtn").addEventListener("click", function () {
+      var date = document.getElementById("blockDate").value;
+      var reason = document.getElementById("blockReason").value;
+      if (!date) return alert("Pick a date");
+      fetch(withKey("/api/schedule/block"), {
+        method: "POST",
+        headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()),
+        body: JSON.stringify({ date: date, reason: reason })
+      }).then(load);
+    });
+
+    document.querySelectorAll(".tabs button[data-panel]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        document.querySelectorAll(".tabs button[data-panel]").forEach(function (b) { b.classList.remove("active"); });
+        document.querySelectorAll(".panel").forEach(function (p) { p.classList.remove("active"); });
+        btn.classList.add("active");
+        document.getElementById("panel-" + btn.getAttribute("data-panel")).classList.add("active");
+      });
+    });
+
+    if (key) load();
+    else showApp(false);
+  })();
+  </script>
+</body>
+</html>

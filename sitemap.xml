@@ -1,8 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://www.mf-revonations.com/</loc><changefreq>monthly</changefreq><priority>1.0</priority></url>
-  <url><loc>https://www.mf-revonations.com/kitchen-remodeling</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://www.mf-revonations.com/bathroom-remodeling</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://www.mf-revonations.com/decks</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
-  <url><loc>https://www.mf-revonations.com/flooring</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.mf-revonations.com/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>
+  <url><loc>https://www.mf-revonations.com/kitchen-remodeling</loc><changefreq>monthly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://www.mf-revonations.com/bathroom-remodeling</loc><changefreq>monthly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://www.mf-revonations.com/decks</loc><changefreq>monthly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://www.mf-revonations.com/flooring</loc><changefreq>monthly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://www.mf-revonations.com/project-kitchen</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.mf-revonations.com/project-bathroom</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.mf-revonations.com/project-deck</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.mf-revonations.com/asheville-remodeling</loc><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.mf-revonations.com/fletcher-remodeling</loc><changefreq>monthly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://www.mf-revonations.com/hendersonville-remodeling</loc><changefreq>monthly</changefreq><priority>0.75</priority></url>
 </urlset>

@@ -119,6 +119,21 @@ export async function availableSlots(env, dateStr, now = new Date()) {
     return { date: dateStr, timezone: TZ, closed: false, slots: [], message: "too far ahead" };
   }
 
+  // Manual day-off blocks (admin)
+  if (env.LEADS) {
+    const blocked = await env.LEADS.get(`block:${dateStr}`);
+    if (blocked) {
+      return {
+        date: dateStr,
+        timezone: TZ,
+        closed: true,
+        slots: [],
+        message: "Unavailable that day",
+        blocked: true,
+      };
+    }
+  }
+
   const { closed, slots } = slotsForDate(dateStr);
   if (closed) {
     return { date: dateStr, timezone: TZ, closed: true, slots: [], message: "Closed Sundays" };
@@ -160,6 +175,7 @@ export async function availabilitySummary(env, days = 14, now = new Date()) {
       date: dateStr,
       weekday: p.weekday,
       closed: !!avail.closed,
+      blocked: !!avail.blocked,
       openCount: (avail.slots || []).length,
       firstSlot: avail.slots && avail.slots[0] ? avail.slots[0].label : null,
     });
@@ -213,6 +229,11 @@ export async function bookSlot(env, body) {
   const [dateStr, hm] = slotId.split("T");
   const hour = Number(hm.slice(0, 2));
   const minute = Number(hm.slice(2, 4));
+  if (env.LEADS) {
+    const blocked = await env.LEADS.get(`block:${dateStr}`);
+    if (blocked) return { error: "that day is blocked", status: 400 };
+  }
+
   const { closed, slots } = slotsForDate(dateStr);
   if (closed) return { error: "that day is closed", status: 400 };
 
@@ -292,15 +313,69 @@ export async function listBookings(env) {
   const list = await env.LEADS.list({ prefix: "book:", limit: 200 });
   const bookings = [];
   for (const k of list.keys) {
+    // skip bookday: indexes if any mis-prefix
+    if (k.name.startsWith("bookday:")) continue;
     const v = await env.LEADS.get(k.name);
     if (v) {
       try {
-        bookings.push(JSON.parse(v));
+        const b = JSON.parse(v);
+        if (b && b.slotId) bookings.push(b);
       } catch (_) {}
     }
   }
   bookings.sort((a, b) => (a.startIso < b.startIso ? -1 : 1));
   return { count: bookings.length, bookings };
+}
+
+export async function listBlocks(env) {
+  if (!env.LEADS) return { blocks: [] };
+  const list = await env.LEADS.list({ prefix: "block:", limit: 100 });
+  const blocks = [];
+  for (const k of list.keys) {
+    const date = k.name.slice("block:".length);
+    let reason = "";
+    try {
+      const v = JSON.parse(await env.LEADS.get(k.name));
+      reason = (v && v.reason) || "";
+    } catch (_) {
+      reason = (await env.LEADS.get(k.name)) || "";
+    }
+    blocks.push({ date, reason });
+  }
+  blocks.sort((a, b) => (a.date < b.date ? -1 : 1));
+  return { blocks };
+}
+
+export async function setBlock(env, dateStr, reason) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return { error: "invalid date", status: 400 };
+  await env.LEADS.put(
+    `block:${dateStr}`,
+    JSON.stringify({ reason: String(reason || "").slice(0, 200), at: new Date().toISOString() }),
+    { expirationTtl: 60 * 60 * 24 * 400 }
+  );
+  return { ok: true, date: dateStr };
+}
+
+export async function clearBlock(env, dateStr) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return { error: "invalid date", status: 400 };
+  await env.LEADS.delete(`block:${dateStr}`);
+  return { ok: true, date: dateStr };
+}
+
+export async function cancelBooking(env, slotId) {
+  if (!slotId) return { error: "slotId required", status: 400 };
+  await env.LEADS.delete(`book:${slotId}`);
+  // Remove from day index if present
+  const dateStr = String(slotId).split("T")[0];
+  try {
+    const key = `bookday:${dateStr}`;
+    const cur = await env.LEADS.get(key, { type: "json" });
+    if (Array.isArray(cur)) {
+      const next = cur.filter((id) => id !== slotId);
+      await env.LEADS.put(key, JSON.stringify(next), { expirationTtl: 60 * 60 * 24 * 120 });
+    }
+  } catch (_) {}
+  return { ok: true, slotId };
 }
 
 export const SCHEDULE_META = {

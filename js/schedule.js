@@ -92,13 +92,13 @@
           btn.setAttribute("role", "option");
           btn.dataset.date = day.date;
 
-          if (day.closed || day.openCount === 0) {
+          if (day.closed || day.blocked || day.openCount === 0) {
             btn.classList.add("is-closed");
             btn.disabled = true;
             btn.innerHTML =
               '<span class="sd-wd">' + weekdayName(day.weekday) + "</span>" +
               '<span class="sd-dt">' + formatDateShort(day.date) + "</span>" +
-              '<span class="sd-meta">' + (day.closed ? "Closed" : "Full") + "</span>";
+              '<span class="sd-meta">' + (day.blocked ? "Blocked" : day.closed ? "Closed" : "Full") + "</span>";
           } else {
             btn.innerHTML =
               '<span class="sd-wd">' + weekdayName(day.weekday) + "</span>" +

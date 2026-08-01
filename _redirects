@@ -1,7 +1,12 @@
 # Clean URLs are served natively by Pages from *.html files.
-# Keep .html → extensionless permanent for bookmarks and external links.
-/kitchen-remodeling.html  /kitchen-remodeling  301
-/bathroom-remodeling.html /bathroom-remodeling 301
-/decks.html               /decks               301
-/flooring.html            /flooring            301
-/index.html               /                    301
+/kitchen-remodeling.html       /kitchen-remodeling        301
+/bathroom-remodeling.html      /bathroom-remodeling       301
+/decks.html                    /decks                     301
+/flooring.html                 /flooring                  301
+/project-kitchen.html          /project-kitchen           301
+/project-bathroom.html         /project-bathroom          301
+/project-deck.html             /project-deck              301
+/asheville-remodeling.html     /asheville-remodeling      301
+/fletcher-remodeling.html      /fletcher-remodeling       301
+/hendersonville-remodeling.html /hendersonville-remodeling 301
+/index.html                    /                          301

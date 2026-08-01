@@ -1055,6 +1055,23 @@ h3 { font-size: 1.375rem; }
   transition: background 0.15s ease;
 }
 .chat-lead-btn:hover { background: var(--accent-dark); }
+.chat-lead-btn-secondary {
+  display: inline-block;
+  margin-top: 0.4rem;
+  margin-left: 0.35rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 6px;
+  border: 1.5px solid var(--accent);
+  background: transparent;
+  color: var(--accent-dark) !important;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-decoration: none;
+}
+.chat-lead-btn-secondary:hover { background: rgba(192,122,62,0.12); }
 
 /* ---------- Service subpages ---------- */
 .subhero {
