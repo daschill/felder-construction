@@ -164,16 +164,30 @@ export async function availabilitySummary(env, days = 14, now = new Date()) {
   return { timezone: TZ, days: out, slotMinutes: SLOT_MINUTES, minNoticeHours: 2 };
 }
 
+/** Day index (JSON array of slotIds) — more reliable than KV list() which can lag */
 async function listBookedIdsForDate(env, dateStr) {
   const set = new Set();
   if (!env.LEADS) return set;
-  const list = await env.LEADS.list({ prefix: `book:${dateStr}`, limit: 100 });
-  for (const k of list.keys) {
-    // key book:YYYY-MM-DD:HHMM or book:YYYY-MM-DDTHHMM
-    const id = k.name.replace(/^book:/, "");
-    set.add(id);
+  try {
+    const idx = await env.LEADS.get(`bookday:${dateStr}`, { type: "json" });
+    if (Array.isArray(idx)) {
+      for (const id of idx) set.add(id);
+    }
+  } catch (_) {
+    /* ignore corrupt index */
   }
   return set;
+}
+
+async function addToDayIndex(env, dateStr, slotId) {
+  const key = `bookday:${dateStr}`;
+  let idx = [];
+  try {
+    const cur = await env.LEADS.get(key, { type: "json" });
+    if (Array.isArray(cur)) idx = cur;
+  } catch (_) {}
+  if (!idx.includes(slotId)) idx.push(slotId);
+  await env.LEADS.put(key, JSON.stringify(idx), { expirationTtl: 60 * 60 * 24 * 120 });
 }
 
 export async function bookSlot(env, body) {
@@ -229,10 +243,13 @@ export async function bookSlot(env, body) {
     at: now.toISOString(),
   };
 
-  // Atomic-ish: put only if absent (KV doesn't have true CAS; double-check)
-  await env.LEADS.put(key, JSON.stringify(booking), {
-    metadata: { date: dateStr, name },
-  });
+  // Store booking + day index (TTL 120 days)
+  await env.LEADS.put(key, JSON.stringify(booking), { expirationTtl: 60 * 60 * 24 * 120 });
+  await addToDayIndex(env, dateStr, slotId);
+  const verify = await env.LEADS.get(key);
+  if (!verify) {
+    return { error: "could not save booking — try again", status: 500 };
+  }
 
   // Also log as lead for the existing leads pipeline
   const leadKey = "lead:" + Date.now() + ":" + Math.random().toString(36).slice(2, 8);
