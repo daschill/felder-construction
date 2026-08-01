@@ -64,6 +64,48 @@ export default {
       }
     }
 
+    // Store a lead (from the chat lead card or the estimate form). Fire-and-forget from the client.
+    if (url.pathname === "/api/lead" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const clean = (v, max) => String(v || "").slice(0, max).trim();
+        const lead = {
+          source: clean(body.source, 20) || "unknown",
+          name: clean(body.name, 100),
+          contact: clean(body.contact, 150),
+          project: clean(body.project, 120),
+          location: clean(body.location, 120),
+          timeline: clean(body.timeline, 120),
+          notes: clean(body.notes, 1000),
+          page: clean(body.page, 200),
+          at: new Date().toISOString(),
+        };
+        if (!lead.name && !lead.contact) {
+          return Response.json({ error: "name or contact required" }, { status: 400, headers: CORS });
+        }
+        const key = "lead:" + Date.now() + ":" + Math.random().toString(36).slice(2, 8);
+        await env.LEADS.put(key, JSON.stringify(lead));
+        return Response.json({ ok: true }, { headers: CORS });
+      } catch (err) {
+        return Response.json({ error: "lead failed" }, { status: 500, headers: CORS });
+      }
+    }
+
+    // Read back stored leads. Protected by the LEADS_KEY secret: GET /api/leads?key=...
+    if (url.pathname === "/api/leads" && request.method === "GET") {
+      if (!env.LEADS_KEY || url.searchParams.get("key") !== env.LEADS_KEY) {
+        return Response.json({ error: "unauthorized" }, { status: 401, headers: CORS });
+      }
+      const list = await env.LEADS.list({ prefix: "lead:", limit: 200 });
+      const leads = [];
+      for (const k of list.keys) {
+        const v = await env.LEADS.get(k.name);
+        if (v) leads.push(JSON.parse(v));
+      }
+      leads.sort((a, b) => (a.at < b.at ? 1 : -1));
+      return Response.json({ count: leads.length, leads }, { headers: CORS });
+    }
+
     return new Response("felder-chat: POST /api/chat", { headers: CORS });
   },
 };

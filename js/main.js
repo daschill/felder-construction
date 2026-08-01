@@ -1,5 +1,21 @@
 // Felder Construction — main.js
 
+var CHAT_API = "https://felder-chat.michaelschillereff.workers.dev/api/chat";
+var LEAD_API = "https://felder-chat.michaelschillereff.workers.dev/api/lead";
+
+// Fire-and-forget lead capture — never blocks the visitor
+function postLead(payload) {
+  try {
+    payload.page = location.pathname;
+    fetch(LEAD_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      keepalive: true
+    }).catch(function () { /* silent — mailto path still works */ });
+  } catch (e) { /* silent */ }
+}
+
 // --- Site behaviors (header, nav, gallery filter, reveal, estimate form, year) ---
 (function () {
   "use strict";
@@ -64,7 +80,7 @@
     revealEls.forEach(function (el) { el.classList.add("visible"); });
   }
 
-  // --- Estimate form -> mailto ---
+  // --- Estimate form -> lead log + mailto ---
   var form = document.getElementById("estimateForm");
   var note = document.getElementById("formNote");
   form.addEventListener("submit", function (e) {
@@ -87,6 +103,15 @@
       note.classList.add("err");
       return;
     }
+
+    // Save the lead even if the visitor never sends the email
+    postLead({
+      source: "estimate-form",
+      name: name,
+      contact: email + (phone ? " / " + phone : ""),
+      project: type,
+      notes: message
+    });
 
     var subject = "Estimate request — " + type + " (" + name + ")";
     var body =
@@ -112,8 +137,6 @@
 // --- AI chatbot (Workers AI backend, rule-based fallback) ---
 (function () {
   "use strict";
-
-  var CHAT_API = "https://felder-chat.michaelschillereff.workers.dev/api/chat";
 
   var launcher = document.getElementById("chatLauncher");
   var panel = document.getElementById("chatPanel");
@@ -213,6 +236,17 @@
   }
 
   function renderLeadCard(lead) {
+    // Save the lead immediately — even if the visitor never taps "Send to Michael"
+    postLead({
+      source: "chat",
+      name: lead.name || "",
+      contact: lead.contact || "",
+      project: lead.project || "",
+      location: lead.location || "",
+      timeline: lead.timeline || "",
+      notes: lead.notes || ""
+    });
+
     var subject = "Website chat lead — " + (lead.project || "project") + " (" + (lead.name || "") + ")";
     var body =
       "Name: " + (lead.name || "") + "\n" +
@@ -283,6 +317,7 @@
   }
 
   function openChat() {
+    hideNudge();
     panel.hidden = false;
     launcher.setAttribute("aria-expanded", "true");
     if (!greeted) {
@@ -324,6 +359,29 @@
     var a = e.target.closest("a");
     if (a && a.getAttribute("href") && a.getAttribute("href").charAt(0) === "#") closeChat();
   });
+
+  // --- Engagement nudge: one subtle prompt if the visitor hasn't opened chat ---
+  var nudgeEl = null;
+  function hideNudge() {
+    launcher.classList.remove("pulse");
+    if (nudgeEl) { nudgeEl.remove(); nudgeEl = null; }
+  }
+  function showNudge() {
+    if (!panel.hidden || nudgeEl) return;
+    try {
+      if (sessionStorage.getItem("fc-nudged")) return;
+      sessionStorage.setItem("fc-nudged", "1");
+    } catch (e) { /* private mode */ }
+    launcher.classList.add("pulse");
+    nudgeEl = document.createElement("button");
+    nudgeEl.type = "button";
+    nudgeEl.className = "chat-nudge";
+    nudgeEl.innerHTML = "<strong>Questions about your project?</strong><br>Ask me — I answer instantly.";
+    nudgeEl.addEventListener("click", openChat);
+    document.getElementById("chatWidget").appendChild(nudgeEl);
+    setTimeout(hideNudge, 14000);
+  }
+  setTimeout(showNudge, 15000);
 
   // Open via URL hash (e.g. #chat) — also handy for support links
   if (window.location.hash === "#chat") openChat();

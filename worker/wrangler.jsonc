@@ -3,5 +3,8 @@
   "main": "src/index.js",
   "compatibility_date": "2026-07-01",
   "ai": { "binding": "AI" },
+  "kv_namespaces": [
+    { "binding": "LEADS", "id": "0b8e41ea67e2486eb3a0485931d79c75" }
+  ],
   "observability": { "enabled": true }
 }
