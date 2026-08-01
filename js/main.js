@@ -211,6 +211,10 @@ function postLead(payload) {
       answer: 'Estimates are free. Call <a href="tel:+18283333369">(828) 333-3369</a> or send the <a href="/#contact">estimate request form</a> — you\'ll hear back directly from Michael, usually the same day.'
     },
     {
+      keys: ["schedule", "book a call", "book call", "appointment", "phone call", "callback", "call me"],
+      answer: 'You can book a free 30-minute phone consult on our calendar — open <a href="#schedule">Book a call</a> and pick a day and time that works for you.'
+    },
+    {
       keys: ["hour", "open", "close", "when", "schedule", "available", "book"],
       answer: "We're available Mon–Thu 7:30a–7:30p, Fri 7:30a–6p, and Sat 9a–5p (closed Sundays). For scheduling, call <a href=\"tel:+18283333369\">(828) 333-3369</a>."
     },
@@ -232,7 +236,7 @@ function postLead(payload) {
     }
   ];
 
-  var CHIPS = ["Our services", "Get an estimate", "Hours", "Service area", "Reviews", "Contact"];
+  var CHIPS = ["Our services", "Get an estimate", "Book a call", "Hours", "Service area", "Contact"];
 
   function scrollToBottom() {
     messages.scrollTop = messages.scrollHeight;

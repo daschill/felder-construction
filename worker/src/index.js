@@ -1,9 +1,14 @@
-// Felder Construction — AI chat worker
-// Answers visitor questions with Workers AI and qualifies project leads.
-// POST /api/chat  { messages: [{ role: "user"|"assistant", content: string }] }
-// -> { reply: string }
-// POST /api/lead  stores a lead in KV
-// GET  /api/leads?key=  lists leads (requires LEADS_KEY secret)
+// Felder Construction — AI chat + phone scheduling worker
+// POST /api/chat  ·  POST /api/lead  ·  GET /api/leads
+// GET  /api/schedule/days  ·  GET /api/schedule/slots  ·  POST /api/schedule/book
+
+import {
+  availableSlots,
+  availabilitySummary,
+  bookSlot,
+  listBookings,
+  SCHEDULE_META,
+} from "./schedule.js";
 
 const SYSTEM_PROMPT = `You are Felder, the AI assistant on the Felder Construction website — an owner-operated remodeling contractor based in Arden, North Carolina, serving Asheville and greater Western North Carolina (WNC). Your job is to answer visitor questions and qualify project leads so the owner, Michael Felder, spends less time on the phone.
 
@@ -17,12 +22,14 @@ BUSINESS FACTS
 - Service area: Arden, Asheville, Fletcher, Mills River, Hendersonville, and greater WNC.
 - Process: free in-home walk-through, then a detailed written estimate and realistic schedule, then the build (arrive on time, communicate throughout, clean jobsite daily), then a final walkthrough.
 - After Hurricane Helene, the company helped WNC homeowners repair storm-damaged floors and interiors.
+- Phone call scheduling: visitors can book a free 30-minute phone consult on the website (section #schedule). Hours for calls: Mon–Thu 8am–7pm, Fri 8am–5:30pm, Sat 9am–4:30pm Eastern, closed Sunday. Tell them to use the online calendar at the Schedule a Call section, or open /#schedule.
 
 RULES
 - Be warm, plain-spoken, and concise: 1-3 short sentences per reply. Plain text only, no markdown or bullet lists unless the visitor asks for a list.
 - Never quote prices or guess what a project might cost. Pricing depends on scope and estimates are always free — say that instead.
 - For urgent problems (active leak, storm damage), tell them to call (828) 333-3369 right away.
 - Only discuss Felder Construction, its services, and home remodeling in general. Politely decline anything unrelated.
+- If they want to schedule a call, point them to the website calendar (#schedule) rather than inventing available times yourself.
 - LEAD QUALIFICATION: when a visitor mentions a project they want done, gather details ONE question at a time, in this order: (1) what type of project, (2) what town they are in, (3) when they want it done, (4) their name, (5) their phone number or email. Weave the questions in naturally, one per reply, never all at once.
 - When you have ALL of: name, contact (phone or email), project type, location, and timeline — output one line in EXACTLY this format, followed by one friendly closing sentence telling them Michael will be in touch:
 LEAD_READY name=<name> | contact=<phone or email> | project=<type> | location=<town> | timeline=<timeline> | notes=<one-line summary of the project>
@@ -174,8 +181,58 @@ export default {
       return json({ count: leads.length, leads });
     }
 
-    return new Response("felder-chat: POST /api/chat · POST /api/lead · GET /api/health", {
-      headers: CORS,
-    });
+    // --- Scheduling: phone consult calendar ---
+    if (url.pathname === "/api/schedule/meta" && request.method === "GET") {
+      return json(SCHEDULE_META);
+    }
+
+    if (url.pathname === "/api/schedule/days" && request.method === "GET") {
+      try {
+        const days = url.searchParams.get("days") || "21";
+        const summary = await availabilitySummary(env, days);
+        return json(summary);
+      } catch (err) {
+        return json({ error: "availability failed" }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/schedule/slots" && request.method === "GET") {
+      try {
+        const date = url.searchParams.get("date") || "";
+        if (!date) return json({ error: "date required (YYYY-MM-DD)" }, 400);
+        const result = await availableSlots(env, date);
+        if (result.error) return json(result, 400);
+        return json(result);
+      } catch (err) {
+        return json({ error: "slots failed" }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/schedule/book" && request.method === "POST") {
+      try {
+        const body = await request.json();
+        const result = await bookSlot(env, body);
+        if (result.error) return json(result, result.status || 400);
+        return json(result);
+      } catch (err) {
+        return json({ error: "booking failed" }, 500);
+      }
+    }
+
+    if (url.pathname === "/api/schedule/bookings" && request.method === "GET") {
+      if (!env.LEADS_KEY || url.searchParams.get("key") !== env.LEADS_KEY) {
+        return json({ error: "unauthorized" }, 401);
+      }
+      try {
+        return json(await listBookings(env));
+      } catch (err) {
+        return json({ error: "list failed" }, 500);
+      }
+    }
+
+    return new Response(
+      "felder-chat: /api/chat · /api/lead · /api/schedule/days · /api/schedule/slots · /api/schedule/book · /api/health",
+      { headers: CORS }
+    );
   },
 };

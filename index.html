@@ -18,7 +18,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/style.css?v=social4">
+  <link rel="stylesheet" href="css/style.css?v=sched1">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -106,6 +106,7 @@
         <a href="#reviews">Reviews</a>
         <a href="#faq">FAQ</a>
         <a href="#contact">Contact</a>
+        <a href="#schedule">Book a call</a>
       </nav>
       <div class="header-cta">
         <a class="btn btn-primary btn-sm" href="tel:+18283333369">
@@ -432,41 +433,124 @@
               </a>
             </div>
           </div>
-          <form class="contact-form reveal" id="estimateForm" novalidate>
-            <h3>Request a Free Estimate</h3>
-            <div class="form-row">
-              <label for="f-name">Name *</label>
-              <input type="text" id="f-name" name="name" required autocomplete="name">
+          <div class="contact-form reveal" id="contactPanel">
+            <div class="form-tabs" role="tablist" aria-label="Contact options">
+              <button type="button" class="form-tab active" role="tab" id="tabEstimate" aria-selected="true" aria-controls="panelEstimate">Free estimate</button>
+              <button type="button" class="form-tab" role="tab" id="tabSchedule" aria-selected="false" aria-controls="panelSchedule">Book a call</button>
             </div>
-            <div class="form-row-2">
-              <div class="form-row">
-                <label for="f-phone">Phone</label>
-                <input type="tel" id="f-phone" name="phone" autocomplete="tel">
+
+            <div id="panelEstimate" role="tabpanel" aria-labelledby="tabEstimate">
+              <form id="estimateForm" novalidate>
+                <h3>Request a Free Estimate</h3>
+                <div class="form-row">
+                  <label for="f-name">Name *</label>
+                  <input type="text" id="f-name" name="name" required autocomplete="name">
+                </div>
+                <div class="form-row-2">
+                  <div class="form-row">
+                    <label for="f-phone">Phone</label>
+                    <input type="tel" id="f-phone" name="phone" autocomplete="tel">
+                  </div>
+                  <div class="form-row">
+                    <label for="f-email">Email *</label>
+                    <input type="email" id="f-email" name="email" required autocomplete="email">
+                  </div>
+                </div>
+                <div class="form-row">
+                  <label for="f-type">Project type</label>
+                  <select id="f-type" name="type">
+                    <option>Kitchen remodel</option>
+                    <option>Bathroom remodel</option>
+                    <option>Deck / outdoor</option>
+                    <option>Flooring</option>
+                    <option>Storm / water damage repair</option>
+                    <option>Commercial</option>
+                    <option>Something else</option>
+                  </select>
+                </div>
+                <div class="form-row">
+                  <label for="f-msg">Tell us about your project *</label>
+                  <textarea id="f-msg" name="message" rows="4" required></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary btn-lg btn-block">Send Request</button>
+                <p class="form-note" id="formNote" role="status"></p>
+              </form>
+            </div>
+
+            <div id="panelSchedule" role="tabpanel" aria-labelledby="tabSchedule" hidden>
+              <div id="schedule" class="schedule-widget">
+                <h3>Schedule a Phone Call</h3>
+                <p class="schedule-intro">Pick a day, then choose a time that works. We&rsquo;ll call you — 30 minutes, free, Eastern Time.</p>
+                <p class="schedule-hours" id="scheduleHours">Mon–Thu 8a–7p &middot; Fri 8a–5:30p &middot; Sat 9a–4:30p &middot; Closed Sun</p>
+
+                <div class="schedule-step">
+                  <div class="schedule-step-head">
+                    <span class="schedule-step-num">1</span>
+                    <strong>Choose a day</strong>
+                  </div>
+                  <div class="schedule-days" id="scheduleDays" role="listbox" aria-label="Available days">
+                    <p class="schedule-loading">Loading open days&hellip;</p>
+                  </div>
+                </div>
+
+                <div class="schedule-step" id="scheduleStepTimes" hidden>
+                  <div class="schedule-step-head">
+                    <span class="schedule-step-num">2</span>
+                    <strong>Choose a time <span id="scheduleDayLabel" class="schedule-day-label"></span></strong>
+                  </div>
+                  <div class="schedule-slots" id="scheduleSlots" role="listbox" aria-label="Available times"></div>
+                </div>
+
+                <form class="schedule-step" id="scheduleForm" hidden novalidate>
+                  <div class="schedule-step-head">
+                    <span class="schedule-step-num">3</span>
+                    <strong>Your details</strong>
+                  </div>
+                  <p class="schedule-selected" id="scheduleSelected"></p>
+                  <div class="form-row">
+                    <label for="s-name">Name *</label>
+                    <input type="text" id="s-name" name="name" required autocomplete="name">
+                  </div>
+                  <div class="form-row-2">
+                    <div class="form-row">
+                      <label for="s-phone">Phone *</label>
+                      <input type="tel" id="s-phone" name="phone" required autocomplete="tel">
+                    </div>
+                    <div class="form-row">
+                      <label for="s-email">Email</label>
+                      <input type="email" id="s-email" name="email" autocomplete="email">
+                    </div>
+                  </div>
+                  <div class="form-row">
+                    <label for="s-project">What is this about?</label>
+                    <select id="s-project" name="project">
+                      <option value="">Select…</option>
+                      <option>Kitchen remodel</option>
+                      <option>Bathroom remodel</option>
+                      <option>Deck / outdoor</option>
+                      <option>Flooring</option>
+                      <option>Storm / water damage</option>
+                      <option>General questions</option>
+                      <option>Something else</option>
+                    </select>
+                  </div>
+                  <div class="form-row">
+                    <label for="s-notes">Notes (optional)</label>
+                    <textarea id="s-notes" name="notes" rows="2" placeholder="Anything Michael should know before the call"></textarea>
+                  </div>
+                  <button type="submit" class="btn btn-primary btn-lg btn-block" id="scheduleSubmit">Confirm call</button>
+                  <p class="form-note" id="scheduleNote" role="status"></p>
+                </form>
+
+                <div class="schedule-success" id="scheduleSuccess" hidden>
+                  <h3>You&rsquo;re booked</h3>
+                  <p id="scheduleSuccessMsg"></p>
+                  <p>Michael will call you at the time you picked. Need to change it? Call <a href="tel:+18283333369">(828) 333-3369</a>.</p>
+                  <button type="button" class="btn btn-outline btn-sm" id="scheduleAgain">Book another time</button>
+                </div>
               </div>
-              <div class="form-row">
-                <label for="f-email">Email *</label>
-                <input type="email" id="f-email" name="email" required autocomplete="email">
-              </div>
             </div>
-            <div class="form-row">
-              <label for="f-type">Project type</label>
-              <select id="f-type" name="type">
-                <option>Kitchen remodel</option>
-                <option>Bathroom remodel</option>
-                <option>Deck / outdoor</option>
-                <option>Flooring</option>
-                <option>Storm / water damage repair</option>
-                <option>Commercial</option>
-                <option>Something else</option>
-              </select>
-            </div>
-            <div class="form-row">
-              <label for="f-msg">Tell us about your project *</label>
-              <textarea id="f-msg" name="message" rows="4" required></textarea>
-            </div>
-            <button type="submit" class="btn btn-primary btn-lg btn-block">Send Request</button>
-            <p class="form-note" id="formNote" role="status"></p>
-          </form>
+          </div>
         </div>
       </div>
     </section>
@@ -558,6 +642,7 @@
     </section>
   </div>
 
-  <script src="js/main.js" defer></script>
+  <script src="js/main.js?v=sched1" defer></script>
+  <script src="js/schedule.js?v=sched1" defer></script>
 </body>
 </html>

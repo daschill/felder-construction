@@ -60,3 +60,19 @@ Then wait for the Pages custom domain status to flip to **Active**. After that, 
 ```bash
 curl "https://felder-chat.michaelschillereff.workers.dev/api/leads?key=YOUR_LEADS_KEY"
 ```
+
+## Phone call scheduling
+
+On the contact card, **Book a call** opens a calendar of open 30-minute slots
+(Eastern time). Hours: Mon–Thu 8a–7p, Fri 8a–5:30p, Sat 9a–4:30p, closed Sunday.
+Minimum notice 2 hours; up to 30 days ahead. Bookings are stored in KV (`book:…`)
+and also written as leads (`source: phone-schedule`).
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/schedule/days?days=21` | Days + open slot counts |
+| `GET /api/schedule/slots?date=YYYY-MM-DD` | Open times for a day |
+| `POST /api/schedule/book` | Book a slot |
+| `GET /api/schedule/bookings?key=` | List bookings (admin) |
+
+UI deep link: `https://www.mf-revonations.com/#schedule`
