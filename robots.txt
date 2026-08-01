@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://www.felderconstruction.net/sitemap.xml
+Sitemap: https://www.mf-revonations.com/sitemap.xml
